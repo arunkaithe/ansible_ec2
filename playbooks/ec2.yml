@@ -1,0 +1,30 @@
+---
+- name: Create a sandbox instance
+  hosts: localhost
+  gather_facts: true
+
+
+  tasks:
+    - name: Provision 1 EC2 instance
+      ec2:
+        key_name: vixletriakkey
+        group: RiakDB # Security group
+        instance_type: t2.micro
+        image: ami-d05e75b8  # Ubuntu image
+        wait: yes
+        wait_timeout: 500
+        region: us-east-1
+        count: 2
+        instace_tags:
+          Name: dead-stage-riak
+          application: db-riak
+          client: vixlet
+          environment: staging
+        volumes:
+        - device_name: /dev/sda1
+          snapshot: snap-4e3c6d2b
+          volume_size: 10
+        monitoring: yes
+        vpc_subnet_id: subnet-bcb902cb
+        assign_public_ip: yes
+      register: ec2
