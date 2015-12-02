@@ -1,0 +1,64 @@
+---
+  # ### ansible-playbook playbooks/ec2.yml --private-key=~/.ssh/vixletriakkey.pem##############
+- name: Create a sandbox instance
+  hosts: localhost
+  gather_facts: true
+  vars:
+    aws_key_pair: use-stage-riak
+    security_group: use-stage-riak
+    instance_type_aws: r3.large
+    os_image: ami-d05e75b8
+    region_aws: us-east-1
+    instance_name: use-stage-riak
+    application_type: db
+    environment_application: staging
+    subnet_id_region: subnet-bcb902cb
+
+
+  tasks:
+    - name: Provision EC2 instance
+      ec2:
+        key_name: "{{ aws_key_pair }}"
+        group: "{{ security_group }}" # Security group
+        instance_type: "{{ instance_type_aws }}"
+        image: "{{ os_image }}"  # Ubuntu image
+        wait: yes
+        wait_timeout: 500
+        region: "{{ region_aws }}"
+        count: 5
+        instance_tags:
+          Name: "{{ instance_name }}"
+          application: "{{ application_type }}"
+          client: vixlet
+          environment: "{{ environment_application }}"
+        volumes:
+        - device_name: /dev/sda1
+#          snapshot: snap-4e3c6d2b
+          volume_size: 25
+        monitoring: yes
+        vpc_subnet_id: "{{ subnet_id_region }}"
+        assign_public_ip: yes
+      register: ec2
+
+    - name: Add new instance to host group
+      add_host: hostname="{{ item.public_ip }}" groupname=riak_dead
+      with_items: ec2.instances
+    - name: Wait for SSH to come up
+      wait_for: host={{ item.public_dns_name }} port=22 delay=60 timeout=320 state=started
+      with_items: ec2.instances
+
+- name: Configure instance(s)
+  hosts: riak_dead
+  remote_user: ubuntu
+  sudo: True
+  gather_facts: True
+
+  tasks:
+# Installs packages in Ubuntu system
+#     - name: install required packages
+#       apt: name={{ item }} update_cache=yes state=latest
+#       with_items:
+#           - git
+#           - ruby
+# #          - rubygems
+#           - bundler
