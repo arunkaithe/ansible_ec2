@@ -1,0 +1,9 @@
+---
+- name: Configure instance(s) and installs required packages
+# Installs packages in Ubuntu system
+  apt: name={{ item }} update_cache=yes state=latest
+  with_items:
+      - git
+      - ruby
+#     - rubygems
+      - bundler

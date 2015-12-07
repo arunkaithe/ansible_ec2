@@ -9,10 +9,13 @@
     instance_type_aws: t2.micro
     os_image: ami-d05e75b8
     region_aws: us-east-1
-    instance_name: dead2-stage-riak
+    instance_name: dead-stage-riak
     application_type: db_riak
     environment_application: staging
     subnet_id_region: subnet-bcb902cb
+    vol_device_name: /dev/xvdb
+    vol_device_size: 10
+    vol_device_type: gp2
 
 
   tasks:
@@ -33,32 +36,56 @@
           environment: "{{ environment_application }}"
         volumes:
         - device_name: /dev/sda1
-          snapshot: snap-4e3c6d2b
-          volume_size: 10
+          device_type: standard
+          volume_size: 8
+          delete_on_termination: true
+        - device_name: "{{ vol_device_name }}"
+          device_type: "{{ vol_device_type }}"
+          volume_size: "{{ vol_device_size }}"
+          delete_on_termination: true
         monitoring: yes
         vpc_subnet_id: "{{ subnet_id_region }}"
         assign_public_ip: yes
       register: ec2
-
+## this task groups all the provisioned instances and registers with groupname to perform respective tasks/roles
     - name: Add new instance to host group
       add_host: hostname="{{ item.public_ip }}" groupname=riak_dead
       with_items: ec2.instances
     - name: Wait for SSH to come up
       wait_for: host={{ item.public_dns_name }} port=22 delay=60 timeout=320 state=started
       with_items: ec2.instances
+### THIS IS SUPPOSED TO ADD EXTERNAL VOLUMES and attach to the created nodes, But it is accomplished with internal EC2 volumes segment
+    # - ec2_vol:
+    #     instance: "{{ item.id }}"
+    #     name: my_existing_volume_Name_tag
+    #     volume_size: 50
+    #     device_name: /dev/xvdf
+    #     volume_type: gp2
+    #     region: "{{ region_aws }}"
+    #   with_items: ec2.instances
+    #   register: ec2_vol
 
-- name: Configure instance(s)
+
+- name: Call the role playbooks
   hosts: riak_dead
   remote_user: ubuntu
   sudo: True
   gather_facts: True
-
-  tasks:
-# Installs packages in Ubuntu system
-    - name: install required packages
-      apt: name={{ item }} update_cache=yes state=latest
-      with_items:
-          - git
-          - ruby
-#          - rubygems
-          - bundler
+  roles:
+     - common
+######## Do some basic installation on provisioned servers#########
+# - name: Configure instance(s)
+#   hosts: riak_dead
+#   remote_user: ubuntu
+#   sudo: True
+#   gather_facts: True
+#
+#   tasks:
+# # Installs packages in Ubuntu system
+#     - name: install required packages
+#       apt: name={{ item }} update_cache=yes state=latest
+#       with_items:
+#           - git
+#           - ruby
+# #          - rubygems
+#           - bundler
