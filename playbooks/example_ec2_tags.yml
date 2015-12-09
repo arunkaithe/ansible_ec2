@@ -5,38 +5,25 @@
   - name: "create and provision web servers in {{ env }} environment"
     hosts: localhost
     gather_facts: False
-    vars:
-      aws_key_pair: vixletriakkey
-      security_group: RiakDB
-      instance_type_aws: t2.micro
-      region: us-east-1
-      count: 3
-      startindex: 1
-      env: dead
-      vol_device_name: /dev/xvdb
-      vol_device_size: 10
-      vol_device_type: gp2
-      os.amazon.ami_id: ami-d05e75b8
     tasks:
       - name: launch instances
         local_action:
           module: ec2
-          key_name: "{{ aws_key_pair }}"
-          group: "{{ security_group }}" # Security group
-          instance_type: "{{ instance_type_aws }}"
+          key_name: "{{ launch_key.ec2_classic }}"
+          instance_type: "{{ instance.web[env] }}"
           volumes:
           - device_name: /dev/sda1
-            device_type: standard
-            volume_size: 8
+            volume_size: 512
             delete_on_termination: true
-          - device_name: "{{ vol_device_name }}"
-            device_type: "{{ vol_device_type }}"
-            volume_size: "{{ vol_device_size }}"
-            delete_on_termination: true
+          - device_name: "{{ ephemeral[0] }}"
+            ephemeral: ephemeral0
+          - device_name: "{{ ephemeral[1] }}"
+            ephemeral: ephemeral1
             # ephemerals are deleted by default on termination
           region: "{{ region }}"
-          image: ami-d05e75b8
+          image: "{{ os.amazon.ami_id }}"
           wait: yes
+          group: "web-{{ env }}"
           count: "{{ count }}"
           wait_timeout: 1000
         register: created
@@ -69,38 +56,39 @@
           region={{ region }}
         args:
           tags:
-            Name: "use-{{ env|title }}-{{ item.1.msg }}"
+            Name: "Web {{ env|title }} {{ item.1.msg }}"
             Env: "{{ env }}"
-            client: vixlet
-            application: db
+            Type: server
+            Function: web
+            OS: "{{ os.amazon.name }}"
             Region: "{{ region }}"
-            # ID: "{{ item.1.msg }}"
+            ID: "{{ item.1.msg }}"
         with_together:
           - created.instances
           - sequence.results
         tags:
           - tag
-################ Commented out below as we dont use the DNS name's for Servers #################
-      # - name: update dns records
-      #   route53: >-
-      #     command=create
-      #     zone=vixletinternal.com
-      #     record="use-{{ env|title }}-{{ item.1.msg }}".compute-1.amazonaws.com
-      #     type=CNAME
-      #     ttl=300
-      #     value={{ item.0.public_dns_name }}
-      #     overwrite=true
-      #   with_together:
-      #     - created.instances
-      #     - sequence.results
-      #   tags:
-      #     - deploy
+
+      - name: update dns records
+        route53: >-
+          command=create
+          zone=yoursite.com
+          record=web.{{ item.1.msg }}.{{ env }}.server.yoursite.com
+          type=CNAME
+          ttl=300
+          value={{ item.0.public_dns_name }}
+          overwrite=true
+        with_together:
+          - created.instances
+          - sequence.results
+        tags:
+          - deploy
 
       - name: register instances with load balancers
         local_action: ec2_elb
         args:
           instance_id: "{{ item.id }}"
-          ec2_elbs: "{{ elb_names.dead[env] }}"
+          ec2_elbs: "{{ elb_names.web[env] }}"
           region: "{{ region }}"
           state: present
           wait: no
@@ -123,13 +111,13 @@
 
   - name: provision the instances
     hosts: fresh
-    user: ubuntu
+    user: "{{ os.amazon.user }}"
     vars:
-      user: ubuntu
+      user: "{{ os.amazon.user }}"
     roles:
       - common
-      # - swap
-      # - python
+      - swap
+      - python
     tags:
       - configure
 

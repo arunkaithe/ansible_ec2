@@ -47,7 +47,7 @@
         local_action:
           module: lineinfile
           dest: ./hosts
-          line: "{{ item.id }} {{ item.public_dns_name }}"
+          line: "{{ item.id }} {{ item.public_dns_name }} {{ item.public_ip}}"
           create: yes
         with_items: created.instances
         tags:
@@ -95,22 +95,22 @@
       #     - sequence.results
       #   tags:
       #     - deploy
-
-      - name: register instances with load balancers
-        local_action: ec2_elb
-        args:
-          instance_id: "{{ item.id }}"
-          ec2_elbs: "use-{{ env|title }}-{{ item.1.msg }}-elb"
-          region: "{{ region }}"
-          state: present
-          wait: no
-        with_items: created.instances
-        tags:
-          - deploy
-
+      #
+      # - name: register instances with load balancers
+      #   local_action: ec2_elb
+      #   args:
+      #     instance_id: "{{ item.id }}"
+      #     ec2_elbs: "use-{{ env|title }}-{{ item.1.msg }}-elb"
+      #     region: "{{ region }}"
+      #     state: present
+      #     wait: no
+      #   with_items: created.instances
+      #   tags:
+      #     - deploy
+      #
       - name: add instances to an in-memory group
-        no_log: true
-        local_action: add_host hostname="{{ item.public_dns_name }}" groupname=fresh
+        no_log: false
+        local_action: add_host hostname="{{ item.public_ip }}" groupname=ProvisionedInstances
         with_items: created.instances
         tags:
           - create
@@ -122,10 +122,13 @@
           - create
 
   - name: provision the instances
-    hosts: fresh
-    user: ubuntu
-    vars:
-      user: ubuntu
+    hosts: ProvisionedInstances
+    remote_user: ubuntu
+    sudo: True
+    gather_facts: True
+
+    # vars:
+    #   user: ubuntu
     roles:
       - common
       # - swap
@@ -134,9 +137,10 @@
       - configure
 
   - name: summary of created instances
-    hosts: fresh
+    hosts: ProvisionedInstances
+    remote_user: ubuntu
     gather_facts: false
-    sudo: no
+    sudo: True
     tasks:
       - name: Get instance ec2 facts
         action: ec2_facts
